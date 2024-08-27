@@ -1,0 +1,254 @@
+1- creating spring boot App
+   adding depency ( spring for RabbitMq message  & Spring we )
+
+2- create the connection between spring and rabbitMq server through ( application.properities )
+  
+  ### connection between spring and rabbitMQ server
+spring.rabbitmq.host=localhost
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=guest
+spring.rabbitmq.password=guest
+
+
+
+3- create configuration class 
+          - this in case you want to create new Exchange and New Queue 
+          - so in this class we create each one and aslo create the binding between them to link them .
+          - very important to use annotion @Configuration
+              because if you dont use it it will not create the exchange or queue and you not able to push any message
+
+import org.springframework.amqp.core.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class RabbitMQconfig {
+
+    @Value("${rabbitmq.queue.name}")
+    private String queue;
+    @Value("${rabbitmq.exchange.name}")
+    private String exchange;
+    @Value("${rabbitmq.routing.key}")
+    private String routingKey;
+
+    @Bean  // creating binding
+    public Queue queue() {
+
+        return new Queue(queue);
+
+    }
+
+    @Bean  // creating Exchange
+    public TopicExchange exchange() {
+
+        return new TopicExchange(exchange);
+
+    }
+
+
+    @Bean   // create binding between the Queue and Exchange
+    public Binding binding() {
+
+        return BindingBuilder.bind(queue()).to(exchange()).with(routingKey);
+
+    }
+
+}
+
+
+
+
+
+3- create the publisher class and send the message to exchange 
+    by exchange and routing key  
+   - here we will using the [ RabbitTemplate ]
+
+
+
+@Service
+public class RabbitMqProducer {
+    @Value("${rabbitmq.exchange.name}")
+    private String exchange;
+    @Value("${rabbitmq.routing.key}")
+    private String routingKey;
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    public void send(String message) {
+
+        System.err.println(" Start publish the Message -> " + message);
+        rabbitTemplate.convertAndSend(exchange, routingKey, message); /// this will publish the message
+
+    
+
+
+4- create method in controller to sending message by injecting the publisher 
+    @Autowired
+    private RabbitMqProducer rabbitMqProducer;
+
+    @GetMapping("publish")
+    public ResponseEntity<String> send(@RequestParam  String message)
+    {
+
+        System.out.println(" Here in Controller Api >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+
+        rabbitMqProducer.send(message);
+        return  ResponseEntity.ok(" Message Send to Rabbit MQ" );
+
+    }
+
+ calling the Api throw postman ...>>>  localhost:8081/api/v1/publish?message=again
+
+
+5- need our spring boot to receive the message automatic once it published 
+    so will create Class consumer and Using (RabbitListener) 
+    and decide which queue will listen to it .
+
+
+@Service
+public class RabbitMQConsumer {
+
+
+    @RabbitListener(queues = {"${rabbitmq.queue.name}"})
+    public void consume(String Message) {
+
+        System.out.println(" Counsumer Read Message >>>>>>>>>>>>>>> " + Message);
+    }
+
+
+to test it once we call the api from the postman and message listener will work immeditaly 
+
+
+
+----------------------------------------------------- Rabbit MQ with Json Message ----------------------------------------
+
+now we need to work with json message it's same as String exactly 
+so we must have - configuration 
+                - producer for Json
+				- Api for sending the json
+				-Consumer to recevie the Json Message 
+				
+				
+
+1- cofiguration class 
+    we will use the same exchange which will used before but will create new Queue and RoutingKey and Binding
+	
+in the same class will addd the below code
+
+    @Value("${rabbitmq.routing.key}")
+    private String routingKey;
+    @Value("${rabbitmq.routing.json.key}")
+    private String routingjsonKey;
+
+@Bean  /// this for create the new queue
+    public Queue jsonQueue() {
+
+        return new Queue(jsonQueue);
+    }
+
+
+    @Bean   // this for link between the exchange and json queue with key
+    public Binding josnBinding() {
+
+        return BindingBuilder.bind(jsonQueue()).to(exchange()).with(routingjsonKey);
+    }
+
+    @Bean
+    public MessageConverter converter() {
+        return new Jackson2JsonMessageConverter();
+    }
+
+    @Bean
+    public AmqpTemplate amqpTemplate(ConnectionFactory connectionFactory) {
+        RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+        rabbitTemplate.setMessageConverter(converter());
+        return rabbitTemplate;
+    }
+
+
+2- creating UserClass to be convert as json
+  
+  @Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+
+
+    private int id;
+    private String firstName;
+    private String lastName;
+
+}
+
+
+
+3- create new producer For Json consider same as the code but change the routingkey 
+
+@Service
+public class RabbitMqJsonProducer {
+
+    @Value("${rabbitmq.exchange.name}")
+    private String exchange;
+
+    @Value("${rabbitmq.routing.json.key}")
+    private String routingjsonKey;
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+
+    public void produceJson(User user) {
+
+        System.out.println(" Reading json user Object  " + user.toString());
+
+        rabbitTemplate.convertAndSend(exchange, routingjsonKey, user);
+    }
+	
+	
+3- Creating new controller which have POST api take the user object as parametr 
+   and will send the message
+   
+   
+   @RestController
+@RequestMapping("/api/v2")
+public class MessageJsonController {
+
+    @Autowired
+    private RabbitMqJsonProducer rabbitMqJsonProducer;    //// injecting the jsonProducer
+
+
+    @PostMapping("/publish")
+    public ResponseEntity<String> sendJson(@RequestBody User user) {
+
+
+        rabbitMqJsonProducer.produceJson(user);
+        return ResponseEntity.ok("Message Sent to RabbitMQ..........");
+    }
+	
+	
+	now we can call the api and send the message 
+	
+	localhost:8081/api/v2/publish
+	  body :
+	     {
+			"id":5 ,
+			"firstName": "Mina",
+			"lastName": "Sevo"
+	    }
+	
+	
+4- now we need to recive the in new consumer aslo same as the code   
+     but change only the Queue which we listen to it .
+	 
+	 @Service
+    public class RabbitMQJsonConsumer {
+			@RabbitListener(queues = {"${rabbitmq.queue.json.name}"})
+			public void consume(User user) {
+
+				System.out.println(" Counsumer Read Message >>>>>>>>>>>>>>> " + user.toString());
+			}
+	}
+	 
+	 
+	 

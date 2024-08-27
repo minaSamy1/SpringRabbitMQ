@@ -1,0 +1,83 @@
+- we will have 3 spring boot project   ( check the image of the )
+      - Order Service  which is Producer 
+      - stock service  which is consume the message in Queue ( stock )
+      - email service  which is consume the message in Queue ( email )
+
+
+
+
+Steps : 
+   - create order service project spring boot with depenecy ( Lombok , web , rabbit )
+       1- define the properities    server.port  , define the two Queue name , define the Exchange  , define the two routing key
+       2 - Create configuration class 
+                - to create the Queue and Binding between the exchange and queue 
+                - create the two method which related to send and receive message as Json
+      3- create the Model class 
+              - order class ( id , name , qty  price )
+              - order event  ( message , status  , order )
+
+       4- create the Publisher class  as @Services
+              - send message to Stock and email Queue  and take object from OrderEvent . 
+                     /// send the message to Stock Queue
+        rabbitTemplate.convertAndSend(exhange,stockRoutingKey,orderEvent);
+   /// send the message to email Queue
+        rabbitTemplate.convertAndSend(exhange,emailRoutingKey,orderEvent);
+
+     5- create Controller Class  
+          - create Api take order as Request body 
+                   - inside it create new object from orderEveent as send in to publisher
+
+ Start Testing and validate if the exchange and queue created in RabbitMQ server or not 
+
+    localhost:8080/api/v1/send
+     {
+    "name": " product 1",
+    "qty": 5,
+    "price" : 20
+   }
+
+----------------------------------------------  Stock Service ----------------------------------
+
+  - create stock service which is Consumer
+  Steps :
+     - create stock service project spring boot with depenecy ( Lombok , web , rabbit )
+       1- define the properities    server.port  , define Queue name ( which will listen to it )
+       2 - Create configuration class 
+                        - create the two method which related to send and receive message as Json
+            note as the app serve as consumer ( no need to define the exchange and the binding or anything )
+
+     3- create Consumer class which listen to StockQueue 
+            @RabbitListener(queues = {"${rabbitMq.queue.stock.name}"})
+   		 public void getMessage(OrderEvent orderEvent) {
+        		System.err.println(" Reading the message from Stock Service " + orderEvent.toString());
+   			 }   /// can here after we receive the message do anything that Save to DB etc....
+  to Test it 
+        1- run the stock app 
+        2- call the api again
+        3- check the log of stock service and you will find it print the log
+
+----------------------------------------------  Email Service ----------------------------------
+
+  - create stock service which is Consumer
+  Steps :
+     - create stock service project spring boot with depenecy ( Lombok , web , rabbit )
+       1- define the properities    server.port  , define Queue name ( which will listen to it )
+       2 - Create configuration class 
+                        - create the two method which related to send and receive message as Json
+            note as the app serve as consumer ( no need to define the exchange and the binding or anything )
+
+     3- create Consumer class which listen to StockQueue 
+            @RabbitListener(queues = {"${rabbitMq.queue.email.name}"})
+   		 public void getMessage(OrderEvent orderEvent) {
+        		System.err.println(" Reading the message from Stock Service " + orderEvent.toString());
+   			 }
+  to Test it 
+        1- run the stock app 
+        2- call the api again
+        3- check the log of stock service and you will find it print the log
+
+
+
+after the  three service now run you can run the api 
+ and must find automatic 
+   the two consumer Run and  print it in the server log for each project
